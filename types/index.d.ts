@@ -21,10 +21,23 @@ export type View = {
   isJudging: boolean
   /** Files judged as needing no review are hidden. */
   isHiding: boolean
+  /** Test files, told by their path, are hidden. */
+  isHidingTests: boolean
+  /** Files the person marked as read are hidden. */
+  isHidingRead: boolean
   isRepo: boolean
   /** The last failure to show, or `''`. */
   error: string
 }
+
+/** The diff line a question is being typed under, or `null` for none. */
+export type CommentTarget = {
+  path: string
+  /** The line's index among the lines of the file's stored diff. */
+  index: number
+  /** The file's diff hash when the line was picked: a changed diff drops it. */
+  hash: string
+} | null
 
 declare module 'claude-code' {
   interface PluginState {
@@ -35,6 +48,7 @@ declare module 'claude-code' {
       readMarks: Shaped<Record<string, string>>
       expanded: Shaped<string[]>
       view: Shaped<View>
+      commentTarget: Shaped<CommentTarget>
     }
   }
 }
