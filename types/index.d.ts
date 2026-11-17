@@ -26,20 +26,65 @@ export type View = {
   /** Files the person marked as read are hidden. */
   isHidingRead: boolean
   isRepo: boolean
+  /** The tab the pane shows. */
+  tab: Tab
+  /** The name of the branch the change is diffed against, as shown. */
+  base: string
   /** The last failure to show, or `''`. */
   error: string
 }
 
-/** The diff line a question is being typed under, or `null` for none. */
-export type CommentTarget = {
-  path: string
-  /** The line's index among the lines of the file's stored diff. */
-  index: number
-  /** The file's diff hash when the line was picked: a changed diff drops it. */
-  hash: string
-} | null
+export type Tab = 'summary' | 'code' | 'notes'
+
+/** A choice Claude made on the way, or a point it pushed back on. */
+export type Note = {
+  /** `n1`, `n2`…: what Claude names the note by to update or close it. */
+  id: string
+  kind: 'pushback' | 'arbitrage'
+  title: string
+  /** What was decided, why, and what to do about it. */
+  detail: string
+  /** The file the note is about, when it is about one. */
+  path?: string
+  isClosed: boolean
+}
+
+/** What Claude wrote for the reviewer about one branch of one repository. */
+export type Report = {
+  /** The `$.store` key the report is kept under, or `''` before any is read. */
+  key: string
+  summary: string
+  notes: Note[]
+}
+
+/** What a comment is being typed under, or `null` for nothing. */
+export type CommentTarget =
+  | {
+      kind: 'line'
+      path: string
+      /** The line's index among the lines of the file's stored diff. */
+      index: number
+      /** The file's diff hash when the line was picked: a changed diff drops it. */
+      hash: string
+    }
+  | { kind: 'note'; id: string }
+  | null
+
+/** What Claude passes the tool that writes the report. */
+export type ReportInput = {
+  action: string
+  text?: string
+  kind?: string
+  title?: string
+  detail?: string
+  path?: string
+  id?: string
+}
 
 declare module 'claude-code' {
+  interface McpToolInputs {
+    'mcp__code-inspector__inspect_report': ReportInput
+  }
   interface PluginState {
     'code-inspector': {
       files: Shaped<FileChange[]>
@@ -49,6 +94,7 @@ declare module 'claude-code' {
       expanded: Shaped<string[]>
       view: Shaped<View>
       commentTarget: Shaped<CommentTarget>
+      report: Shaped<Report>
     }
   }
 }
