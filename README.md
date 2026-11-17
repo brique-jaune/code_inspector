@@ -1,124 +1,130 @@
 # code-inspector
 
-Un mod Claude Code qui ouvre, à droite de la conversation, un panneau de revue
-de la branche en cours : ce qu'elle apporte, son code, et les choix que Claude
-a faits en route. Pour relire ce que Claude a écrit, avec le contexte et les
-suites à donner, sans quitter la session ni relire toute la conversation.
+A Claude Code mod that opens a review pane for the current branch, to the right
+of the conversation: what the branch brings, its code, and the choices Claude
+made along the way. It lets you review what Claude wrote, with the context and
+the follow-ups, without leaving the session or rereading the whole
+conversation.
 
-## Ce que montre le panneau
+## What the pane shows
 
-Tout porte sur la branche : ce qu'elle change par rapport à la branche dont
-elle a été tirée, commité ou non. Trois onglets, la base du diff affichée à
-côté.
+Everything is about the branch: what it changes compared to the branch it was
+created from, committed or not. There are three tabs, with the diff base shown
+next to them.
+
+The pane's interface is in French; this document quotes its labels as they
+appear on screen.
 
 ### Summary
 
-Ce qu'apporte la branche, écrit par Claude et tenu à jour au fil du travail.
-Tant qu'il n'y en a pas, un bouton le demande à Claude.
+What the branch brings, written by Claude and kept up to date as the work goes
+on. Until there is one, a button asks Claude for it.
 
 ### Code
 
-- **Liste des fichiers modifiés** : statut (`M`, `A`, `D`, `R`, `?`), chemin et
-  nombre de lignes ajoutées et retirées. La liste se met à jour après chaque
-  écriture de Claude et à la fin de chaque tour.
-- **Diff au clic** : un clic sur le nom d'un fichier déplie son diff, un second
-  le replie.
-- **Case « lu »** : cocher `[ ]` barre le nom du fichier, pour marquer que son
-  diff a été lu en entier. Si le fichier change ensuite, la coche tombe.
-- **Question sur une ligne** : dans un diff déplié, un clic sur le `?` d'une
-  ligne ouvre un champ dessous. Entrée envoie la question à Claude, avec le chemin, le
-  numéro de ligne et le hunk autour ; champ vide, Claude explique la ligne. La
-  réponse arrive dans la conversation. Pendant un tour, la question part dès
-  que la session est libre.
-- **Boutons « Masquer les tests » et « Masquer les lus »** : retirent de la
-  liste les fichiers de test (reconnus à leur chemin : `tests/`, `__tests__/`,
-  `*.test.*`, `*.spec.*`, `*_test.*`, `test_*.py`, `*Test.php`…) et les
-  fichiers cochés « lu ». Un second clic les ramène.
-- **Bouton « Masquer le sans-intérêt »** : un modèle juge chaque diff et masque
-  les fichiers qui ne méritent pas de revue (lockfiles, fichiers générés,
-  formatage, renommages mécaniques…). « Tout afficher » les ramène.
+- **List of changed files**: status (`M`, `A`, `D`, `R`, `?`), path, and number
+  of lines added and removed. The list refreshes after each write by Claude and
+  at the end of each turn.
+- **Diff on click**: clicking a file name expands its diff, clicking again
+  collapses it.
+- **Read checkbox**: ticking `[ ]` strikes through the file name, to mark that
+  its diff has been read in full. If the file changes afterwards, the tick is
+  cleared.
+- **Question on a line**: in an expanded diff, clicking the `?` of a line opens
+  a field below it. Enter sends the question to Claude, with the path, the line
+  number and the surrounding hunk; with an empty field, Claude explains the
+  line. The answer arrives in the conversation. During a turn, the question is
+  sent as soon as the session is free.
+- **"Masquer les tests" and "Masquer les lus" buttons** (hide tests, hide read
+  files): remove from the list the test files (recognised by their path:
+  `tests/`, `__tests__/`, `*.test.*`, `*.spec.*`, `*_test.*`, `test_*.py`,
+  `*Test.php`…) and the files ticked as read. A second click brings them back.
+- **"Masquer le sans-intérêt" button** (hide what is not worth reviewing): a
+  model judges each diff and hides the files that do not deserve a review
+  (lockfiles, generated files, formatting, mechanical renames…). "Tout
+  afficher" (show all) brings them back.
 
-Le bouton n'apparaît qu'une fois le tour de Claude terminé, donc quand les
-modifications sont finies. Un clic fait un seul appel au modèle (`haiku`), pour
-tous les fichiers à la fois. Un verdict reste valable tant que le diff du
-fichier ne change pas : recliquer sans nouvelle modification ne coûte rien.
+The button only appears once Claude's turn is over, so once the changes are
+done. One click makes a single model call (`haiku`), for all files at once. A
+verdict stays valid as long as the file's diff does not change: clicking again
+without any new change costs nothing.
 
 ### Notes
 
-Une note par **pushback** (désaccord, mise en garde, demande que Claude n'a pas
-suivie telle quelle) et par **arbitrage** (choix entre plusieurs options,
-compromis, chose laissée de côté) : ce que Claude a décidé, pourquoi, et le
-fichier visé s'il y en a un.
+One note per **pushback** (a disagreement, a warning, a request Claude did not
+follow as given) and per **trade-off** (a choice between several options, a
+compromise, something left aside): what Claude decided, why, and the file
+concerned if there is one.
 
-Un clic sur le `?` d'une note ouvre un champ dessous, comme sur une ligne de
-diff : Entrée envoie le commentaire à Claude avec la note, pour traiter le
-point ou demander une clarification ; champ vide, Claude clarifie la note. Il
-répond dans la conversation, puis met la note à jour ou la clôt. Les notes
-closes restent en bas, grisées.
+Clicking the `?` of a note opens a field below it, as on a diff line: Enter
+sends the comment to Claude along with the note, to address the point or ask
+for a clarification; with an empty field, Claude clarifies the note. It answers
+in the conversation, then updates the note or closes it. Closed notes stay at
+the bottom, greyed out.
 
-### D'où viennent le summary et les notes
+### Where the summary and the notes come from
 
-Le mod donne à Claude un outil, `inspect_report`, et une consigne dans son
-system prompt : consigner chaque pushback et chaque arbitrage au moment où il
-le fait, et tenir le summary à jour. L'outil n'écrit que dans le stockage du
-mod : aucune permission n'est demandée. Summary et notes sont gardés par dépôt
-et par branche, d'une session à l'autre.
+The mod gives Claude a tool, `inspect_report`, and an instruction in its system
+prompt: record each pushback and each trade-off when it makes it, and keep the
+summary up to date. The tool only writes to the mod's storage: no permission is
+requested. Summary and notes are kept per repository and per branch, from one
+session to the next.
 
-## Utilisation
+## Usage
 
-Dans un dépôt git, taper `/inspect` pour ouvrir le panneau.
+In a git repository, type `/inspect` to open the pane.
 
-Git ne retient pas d'où une branche a été tirée : le mod prend la branche
-(locale ou `origin/*`) dont le point de divergence est le plus proche de
-`HEAD`, et `main` ou `master` à égalité. Sur `main` ou `master` même, il montre
-le working tree contre `HEAD`. Quand il se trompe :
+Git does not record where a branch was created from: the mod picks the branch
+(local or `origin/*`) whose divergence point is closest to `HEAD`, and `main`
+or `master` in case of a tie. On `main` or `master` itself, it shows the
+working tree against `HEAD`. When it gets it wrong:
 
 ```
-/inspect develop    # fixe la base du diff pour cette branche
-/inspect auto       # revient à la déduction
+/inspect develop    # sets the diff base for this branch
+/inspect auto       # goes back to automatic detection
 ```
 
 ## Installation
 
-À l'invite d'une session en terminal :
+At the prompt of a terminal session:
 
 ```
 /plugin install code-inspector --marketplace brique-jaune/code_inspector
 ```
 
-Répondre `y` pour ajouter la marketplace, puis choisir une portée.
+Answer `y` to add the marketplace, then choose a scope.
 
-Depuis un shell :
+From a shell:
 
 ```
 claude plugin install code-inspector --marketplace brique-jaune/code_inspector
 ```
 
-Dans l'application de bureau, où `/plugin` ne s'exécute pas : cliquer sur `+`
-à côté de la zone de saisie, puis Plugins, Add marketplace avec
-`brique-jaune/code_inspector`, puis Add plugin.
+In the desktop app, where `/plugin` does not run: click `+` next to the input
+box, then Plugins, Add marketplace with `brique-jaune/code_inspector`, then
+Add plugin.
 
-## Développement
+## Development
 
 ```
-claude --plugin-dir .        # charge le mod depuis ce dossier
-claude plugin validate .     # vérifie le manifeste et le module
-claude plugin test .         # lance tests/*.test.tsx
+claude --plugin-dir .        # loads the mod from this folder
+claude plugin validate .     # checks the manifest and the module
+claude plugin test .         # runs tests/*.test.tsx
 ```
 
-## Limites
+## Limitations
 
-- Le diff est dessiné ligne à ligne pour rester cliquable (clic sur le `?` en
-  début de ligne). Chaque ligne est colorée seule : une chaîne ou un
-  commentaire sur plusieurs lignes peut être mal coloré.
-- La base déduite peut être une branche sœur, créée depuis celle-ci ou au même
-  point : `/inspect <branche>` la corrige. Sans autre branche, le diff se fait
-  contre `HEAD`.
-- Les notes ne valent que ce que Claude consigne : un choix qu'il n'a pas vu
-  comme un arbitrage n'y figure pas.
-- Le fil d'un commentaire n'est pas gardé sous la note : la réponse est dans
-  la conversation, la note porte l'état final.
-- Le jugement se fait par fichier, pas par hunk.
-- Les diffs très longs sont tronqués, à l'affichage comme dans la demande au
-  modèle ; un fichier trop volumineux pour être jugé reste affiché.
-- Au-delà de 150 fichiers modifiés, seuls les 150 premiers sont listés.
+- The diff is drawn line by line to stay clickable (click on the `?` at the
+  start of a line). Each line is coloured on its own: a string or a comment
+  spanning several lines may be coloured wrongly.
+- The detected base may be a sibling branch, created from this one or at the
+  same point: `/inspect <branch>` fixes it. With no other branch, the diff is
+  made against `HEAD`.
+- The notes are only as good as what Claude records: a choice it did not see as
+  a trade-off is not listed.
+- The thread of a comment is not kept under the note: the answer is in the
+  conversation, and the note carries the final state.
+- The judgement is made per file, not per hunk.
+- Very long diffs are truncated, both on screen and in the request to the
+  model; a file too large to be judged stays listed.
+- Beyond 150 changed files, only the first 150 are listed.
