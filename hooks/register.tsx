@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { FileChange, Verdict, View } from '../types'
+import type { CommentTarget, FileChange, Verdict, View } from '../types'
 
 const PANE = 'code-inspector'
 const TITLE = 'Inspect'
@@ -20,8 +20,23 @@ const INITIAL_VIEW: View = {
   isBusy: false,
   isJudging: false,
   isHiding: false,
+  isHidingTests: false,
+  isHidingRead: false,
   isRepo: true,
   error: '',
+}
+const NO_TARGET: CommentTarget = null
+// How many diff lines of the hunk go with a question, each side of its line.
+const QUESTION_CONTEXT = 10
+const DEFAULT_QUESTION =
+  'Explique ce que fait cette ligne et pourquoi elle a été modifiée.'
+
+// A test file, told by its path alone: a test folder, or a test file name.
+const TEST_PATH =
+  /(^|\/)(tests?|__tests__|specs?|__mocks__|e2e)\/|\.(test|spec)\.[^/]+$|_(test|spec)\.[^/.]+$|(^|\/)test_[^/]+\.py$|[^/]Tests?\.(php|java|kt|cs|scala|swift)$/
+
+function isTestPath(path: string): boolean {
+  return TEST_PATH.test(path)
 }
 
 // Change a tag when its value's fields change: it declines what an earlier
@@ -39,8 +54,89 @@ const expanded = atom({ plugin: 'code-inspector', key: 'expanded' } as const, []
   shape: 'expanded-1',
 })
 const view = atom({ plugin: 'code-inspector', key: 'view' } as const, INITIAL_VIEW, {
-  shape: 'view-1',
+  shape: 'view-2',
 })
+const commentTarget = atom(
+  { plugin: 'code-inspector', key: 'commentTarget' } as const,
+  NO_TARGET,
+  { shape: 'comment-target-1' },
+)
+
+type DiffRow = {
+  text: string
+  kind: 'hunk' | 'add' | 'remove' | 'context' | 'note'
+  /** The line's number in the old file, for a removed or context line. */
+  oldNo?: number
+  /** The line's number in the new file, for an added or context line. */
+  newNo?: number
+  /** The index of the row's hunk header. */
+  hunkAt: number
+}
+
+/** Reads unified-diff hunks into rows, each numbered as its hunk header says. */
+function rowsOf(diff: string): DiffRow[] {
+  const rows: DiffRow[] = []
+  let oldNo = 0
+  let newNo = 0
+  let hunkAt = 0
+
+  for (const text of diff.replace(/\n$/, '').split('\n')) {
+    const header = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(text)
+
+    if (header !== null) {
+      oldNo = Number(header[1])
+      newNo = Number(header[2])
+      hunkAt = rows.length
+      rows.push({ text, kind: 'hunk', hunkAt })
+    } else if (text.startsWith('+')) {
+      rows.push({ text, kind: 'add', newNo: newNo++, hunkAt })
+    } else if (text.startsWith('-')) {
+      rows.push({ text, kind: 'remove', oldNo: oldNo++, hunkAt })
+    } else if (text.startsWith('\\')) {
+      rows.push({ text, kind: 'note', hunkAt })
+    } else {
+      rows.push({ text, kind: 'context', oldNo: oldNo++, newNo: newNo++, hunkAt })
+    }
+  }
+
+  return rows
+}
+
+/** The prompt asking about one diff line: where it is, its hunk, the question. */
+function questionOf(file: FileChange, rows: DiffRow[], index: number, asked: string): string {
+  const row = rows[index]
+
+  if (row === undefined) return ''
+  const where =
+    row.kind === 'remove'
+      ? `ligne ${row.oldNo} de l'ancienne version (ligne supprimée)`
+      : `ligne ${row.newNo}`
+  const from = Math.max(row.hunkAt, index - QUESTION_CONTEXT)
+  const around = rows
+    .slice(from, index + QUESTION_CONTEXT + 1)
+    .filter(r => r.hunkAt === row.hunkAt)
+    .map(r => r.text)
+    .join('\n')
+  const question = asked.trim() === '' ? DEFAULT_QUESTION : asked.trim()
+
+  return [
+    `Question sur une modification en cours, dans \`${file.path}\`, ${where} :`,
+    '',
+    '```diff',
+    around,
+    '```',
+    '',
+    'Ligne visée :',
+    '',
+    '```',
+    row.text,
+    '```',
+    '',
+    question,
+    '',
+    'Réponds par une explication, sans modifier de fichier.',
+  ].join('\n')
+}
 
 const JUDGE_RULES = `You triage a code change for a human reviewer.
 For each file you are given its path, its git status and its unified diff.
@@ -336,12 +432,13 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button, Code } = $.ui.resolve(e)
+    const { Box, Text, Button, Input } = $.ui.resolve(e)
     const list = await read($, files)
     const known = await read($, verdicts)
     const marks = await read($, readMarks)
     const open = await read($, expanded)
     const state = await read($, view)
+    const target = await read($, commentTarget)
 
     if (!state.isRepo) {
       return (
@@ -357,11 +454,46 @@ export const register: Register = on => {
     }
     const isSkippable = (file: FileChange): boolean =>
       verdictOf(file)?.needsReview === false
+    const isReadFile = (file: FileChange): boolean =>
+      marks[file.path] === file.hash
     const unjudged = list.filter(file => verdictOf(file) === undefined).length
-    const hidden = state.isHiding ? list.filter(isSkippable) : []
-    const shown = state.isHiding ? list.filter(f => !isSkippable(f)) : list
-    const readCount = shown.filter(f => marks[f.path] === f.hash).length
+    const testCount = list.filter(f => isTestPath(f.path)).length
+    const readTotal = list.filter(isReadFile).length
+    // Each hidden file counts once, under the first filter that hides it.
+    const hiddenBy = (file: FileChange): 'dull' | 'test' | 'read' | undefined => {
+      if (state.isHiding && isSkippable(file)) return 'dull'
+      if (state.isHidingTests && isTestPath(file.path)) return 'test'
+      if (state.isHidingRead && isReadFile(file)) return 'read'
+
+      return undefined
+    }
+    const shown = list.filter(f => hiddenBy(f) === undefined)
+    const hiddenCount = (why: 'dull' | 'test' | 'read'): number =>
+      list.filter(f => hiddenBy(f) === why).length
+    const hiddenParts = [
+      [hiddenCount('dull'), 'sans intérêt'] as const,
+      [hiddenCount('test'), 'tests'] as const,
+      [hiddenCount('read'), 'lus'] as const,
+    ]
+      .filter(([count]) => count > 0)
+      .map(([count, label]) => `${count} ${label}`)
     const canJudge = !state.isBusy && !state.isJudging && list.length > 0
+
+    const pickLine = (file: FileChange, index: number) => () =>
+      update($, commentTarget, now =>
+        now?.path === file.path && now.index === index && now.hash === file.hash
+          ? null
+          : { path: file.path, index, hash: file.hash },
+      )
+    const ask = (file: FileChange, rows: DiffRow[], index: number) => async (asked: string) => {
+      await update($, commentTarget, () => null)
+      // Never awaited: the prompt runs once the session is idle, which a
+      // handler waiting on it would hold off.
+      void $.prompt
+        .submit({ text: questionOf(file, rows, index, asked), asUser: true })
+        .catch(() => undefined)
+      await $.ui.toast('Question envoyée à Claude')
+    }
 
     const toggleRead = (file: FileChange) => async () => {
       await update($, readMarks, all => {
@@ -424,14 +556,53 @@ export const register: Register = on => {
                   {verdict.reason}
                 </Text>
               )}
-              {isOpen && file.diff !== '' && (
-                <Code
-                  source={file.diff}
-                  format="diff"
-                  path={file.path}
-                  wrap="truncate-end"
-                />
-              )}
+              {isOpen &&
+                file.diff !== '' &&
+                rowsOf(file.diff).map((row, index, rows) => {
+                  if (row.kind === 'hunk' || row.kind === 'note') {
+                    return (
+                      <Text dimColor wrap="truncate-end">
+                        {row.text}
+                      </Text>
+                    )
+                  }
+                  const isPicked =
+                    target?.path === file.path &&
+                    target.index === index &&
+                    target.hash === file.hash
+                  const number = String(row.newNo ?? row.oldNo ?? '').padStart(4)
+                  const color =
+                    row.kind === 'add'
+                      ? 'text-success'
+                      : row.kind === 'remove'
+                        ? 'text-danger'
+                        : undefined
+
+                  return (
+                    <Box flexDirection="column">
+                      <Button
+                        key={`line:${file.path}:${index}`}
+                        plain
+                        onPress={pickLine(file, index)}
+                      >
+                        <Text dimColor>{number} </Text>
+                        <Text color={color} bold={isPicked} wrap="truncate-end">
+                          {row.text}
+                        </Text>
+                      </Button>
+                      {isPicked && (
+                        <Input
+                          key="comment"
+                          label="  ?"
+                          placeholder="Votre question (vide : expliquer la ligne)"
+                          submitLabel="envoyer à Claude"
+                          autoFocus
+                          onSubmit={ask(file, rows, index)}
+                        />
+                      )}
+                    </Box>
+                  )
+                })}
               {isOpen && file.diff === '' && (
                 <Text dimColor>{'    '}(binaire ou sans contenu)</Text>
               )}
@@ -443,9 +614,31 @@ export const register: Register = on => {
         })}
         {list.length > 0 && (
           <Text dimColor>
-            {readCount}/{shown.length} lus
-            {hidden.length > 0 ? ` · ${hidden.length} masqués` : ''}
+            {readTotal}/{list.length} lus
+            {hiddenParts.length > 0
+              ? ` · ${list.length - shown.length} masqués (${hiddenParts.join(', ')})`
+              : ''}
           </Text>
+        )}
+        {testCount > 0 && (
+          <Button
+            key="toggle-tests"
+            onPress={() =>
+              update($, view, v => ({ ...v, isHidingTests: !v.isHidingTests }))
+            }
+          >
+            {state.isHidingTests ? 'Afficher' : 'Masquer'} les tests ({testCount})
+          </Button>
+        )}
+        {(readTotal > 0 || state.isHidingRead) && (
+          <Button
+            key="toggle-read"
+            onPress={() =>
+              update($, view, v => ({ ...v, isHidingRead: !v.isHidingRead }))
+            }
+          >
+            {state.isHidingRead ? 'Afficher' : 'Masquer'} les lus ({readTotal})
+          </Button>
         )}
         {state.error !== '' && <Text color="text-danger">{state.error}</Text>}
         {state.isJudging && <Text dimColor>Jugement en cours…</Text>}
