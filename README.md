@@ -13,8 +13,8 @@ d'écrire sans quitter la session.
   le replie.
 - **Case « lu »** : cocher `[ ]` barre le nom du fichier, pour marquer que son
   diff a été lu en entier. Si le fichier change ensuite, la coche tombe.
-- **Question sur une ligne** : dans un diff déplié, un clic sur une ligne ouvre
-  un champ dessous. Entrée envoie la question à Claude, avec le chemin, le
+- **Question sur une ligne** : dans un diff déplié, un clic sur le `?` d'une
+  ligne ouvre un champ dessous. Entrée envoie la question à Claude, avec le chemin, le
   numéro de ligne et le hunk autour ; champ vide, Claude explique la ligne. La
   réponse arrive dans la conversation. Pendant un tour, la question part dès
   que la session est libre.
@@ -65,8 +65,9 @@ claude plugin test .         # lance tests/*.test.tsx
 
 ## Limites
 
-- Le diff est dessiné ligne à ligne pour rester cliquable : ajouts en vert,
-  retraits en rouge, sans coloration syntaxique.
+- Le diff est dessiné ligne à ligne pour rester cliquable (clic sur le `?` en
+  début de ligne). Chaque ligne est colorée seule : une chaîne ou un
+  commentaire sur plusieurs lignes peut être mal coloré.
 - Le jugement se fait par fichier, pas par hunk.
 - Les diffs très longs sont tronqués, à l'affichage comme dans la demande au
   modèle ; un fichier trop volumineux pour être jugé reste affiché.
