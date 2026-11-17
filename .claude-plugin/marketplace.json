@@ -1,0 +1,5 @@
+{
+  "name": "code-inspector",
+  "owner": { "name": "brique-jaune" },
+  "plugins": [{ "name": "code-inspector", "source": "./" }]
+}
