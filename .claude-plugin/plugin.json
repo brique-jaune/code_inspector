@@ -1,6 +1,6 @@
 {
   "name": "code-inspector",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A side pane listing the working tree's changes, with diffs, read marks, and a model-judged filter hiding what needs no review.",
   "license": "MIT",
   "types": "./types/index.d.ts"

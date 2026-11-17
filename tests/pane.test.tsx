@@ -107,6 +107,17 @@ test('lists changes, hides what needs no review, marks a file read', async ($, o
   // The diff opens on a press of the name, and a read mark strikes it.
   await ui.press({ key: 'open:src/a.ts' })
   expect(await ui.find({ type: 'Button', key: 'line:src/a.ts:3' })).toBeDefined()
+  // Each line is a Code of its own: a diff hunk of that one line.
+  const codes = await ui.findAll({ type: 'Code' })
+
+  expect(codes.map(code => code.props.source)).toEqual([
+    '@@ -1,1 +1,1 @@\n context',
+    '@@ -2,1 +2,0 @@\n-old',
+    '@@ -2,0 +2,1 @@\n+new',
+    '@@ -3,0 +3,1 @@\n+more',
+  ])
+  expect(codes[0]?.props.format).toBe('diff')
+  expect(codes[0]?.props.path).toBe('src/a.ts')
   await ui.press({ key: 'read:src/a.ts' })
   const name = await ui.find({ type: 'Text', text: /src\/a\.ts/ })
 

@@ -448,7 +448,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button, Input } = $.ui.resolve(e)
+    const { Box, Text, Button, Code, Input } = $.ui.resolve(e)
     const list = await read($, files)
     const known = await read($, verdicts)
     const marks = await read($, readMarks)
@@ -586,26 +586,35 @@ export const register: Register = on => {
                     target?.path === file.path &&
                     target.index === index &&
                     target.hash === file.hash
-                  const number = String(row.newNo ?? row.oldNo ?? '').padStart(4)
-                  const color =
+                  // A hunk of this one line: the engine's diff drawing gives it
+                  // its number, its marker, its add or remove background and
+                  // its tokens' colours, as it would in the whole diff.
+                  const header =
                     row.kind === 'add'
-                      ? 'text-success'
+                      ? `@@ -${row.newNo},0 +${row.newNo},1 @@`
                       : row.kind === 'remove'
-                        ? 'text-danger'
-                        : undefined
+                        ? `@@ -${row.oldNo},1 +${row.oldNo},0 @@`
+                        : `@@ -${row.oldNo},1 +${row.newNo},1 @@`
 
                   return (
                     <Box flexDirection="column">
-                      <Button
-                        key={`line:${file.path}:${index}`}
-                        plain
-                        onPress={pickLine(file, index)}
-                      >
-                        <Text dimColor>{number} </Text>
-                        <Text color={color} bold={isPicked} wrap="truncate-end">
-                          {row.text}
-                        </Text>
-                      </Button>
+                      <Box flexDirection="row">
+                        <Button
+                          key={`line:${file.path}:${index}`}
+                          plain
+                          onPress={pickLine(file, index)}
+                        >
+                          <Text dimColor={!isPicked} bold={isPicked}>
+                            ?
+                          </Text>
+                        </Button>
+                        <Code
+                          source={`${header}\n${row.text || ' '}`}
+                          format="diff"
+                          path={file.path}
+                          wrap="truncate-end"
+                        />
+                      </Box>
                       {isPicked && (
                         <Input
                           key="comment"
