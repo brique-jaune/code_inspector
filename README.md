@@ -130,6 +130,16 @@ claude plugin validate .     # checks the manifest and the module
 claude plugin test .         # runs tests/*.test.tsx
 ```
 
+The same two checks run on every pull request (`.github/workflows/ci.yml`).
+
+### Releases
+
+[release-please](https://github.com/googleapis/release-please) keeps a release
+pull request open on `main`: merging it bumps the version in
+`.claude-plugin/plugin.json`, writes `CHANGELOG.md` and tags the release. It
+reads [Conventional Commits](https://www.conventionalcommits.org): only a
+`feat:` or a `fix:` commit makes a release.
+
 ## Limitations
 
 - The diff is drawn line by line to stay clickable (click on the `?` at the
