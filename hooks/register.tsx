@@ -18,6 +18,8 @@ const MAX_PROMPT_DIFF = 6_000
 const MAX_PROMPT = 150_000
 const JUDGE_MODEL = 'haiku'
 const WRITING_TOOLS = ['Edit', 'Write', 'NotebookEdit', 'Bash']
+const NARROW_TOAST =
+  'Inspect ouvert, mais le terminal est trop étroit pour l’afficher : élargis-le ou tape /inspect.'
 // How many branches are measured to find the one a branch was cut from.
 const MAX_BASES = 30
 // On an equal distance, the branch taken for the base, most likely first.
@@ -128,6 +130,12 @@ const commentTarget = atom(
 const report = atom({ plugin: 'code-inspector', key: 'report' } as const, NO_REPORT, {
   shape: 'report-1',
 })
+/** The pane was opened once this session, by the person or unasked. */
+const hasAutoOpened = atom(
+  { plugin: 'code-inspector', key: 'hasAutoOpened' } as const,
+  false,
+  { shape: 'has-auto-opened-1' },
+)
 
 type DiffRow = {
   text: string
@@ -666,6 +674,35 @@ async function isPaneOpen($: EngineInterface): Promise<boolean> {
   return (await $.ui.panes()).some(pane => pane.id === PANE)
 }
 
+// Two writes of one step both reach `autoOpen` before either has stored the
+// mark: the module holds the second back, the mark holds across reloads.
+let isAutoOpening = false
+
+/**
+ * Opens the pane unasked, once a session and only for a file written in the
+ * repository: a plan or a note written elsewhere is no code to review, and a
+ * pane the person closed stays closed.
+ */
+async function autoOpen($: EngineInterface, path: string): Promise<void> {
+  if (isAutoOpening) return
+  isAutoOpening = true
+
+  try {
+    if (await read($, hasAutoOpened)) return
+    const place = await locate($)
+
+    if (place === undefined || !path.startsWith(`${place.top}/`)) return
+    await update($, hasAutoOpened, () => true)
+    const { isPlaced } = await $.ui.open({ id: PANE, title: TITLE })
+
+    // Opened unasked, a pane waits undrawn on a narrow terminal: say so.
+    if (!isPlaced) $.ui.toast(NARROW_TOAST)
+    await refresh($)
+  } finally {
+    isAutoOpening = false
+  }
+}
+
 type Answer = { needsReview: boolean; reason: string }
 
 /** Reads the model's JSON array; a file it left out is absent from the map. */
@@ -768,7 +805,9 @@ async function judge($: EngineInterface): Promise<void> {
   }
 }
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  const isAutoOpen = options.autoOpen === true
+
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: COMMAND,
@@ -800,6 +839,7 @@ export const register: Register = on => {
         return { text: `Branche inconnue : ${asked}` }
       }
     }
+    await update($, hasAutoOpened, () => true)
     await $.ui.open({ id: PANE, title: TITLE })
     await refresh($)
 
@@ -842,7 +882,21 @@ export const register: Register = on => {
     }
     const ran = await next(e)
 
-    // The call's result never waits on the list, nor fails with it.
+    // The call's result never waits on the pane or the list, nor fails with them.
+    const hasWritten = ran.deny === undefined && ran.isError !== true
+
+    // The file a first success opens the pane for. Bash is not asked: a
+    // command may write nothing.
+    const written =
+      e.tool === 'Edit' || e.tool === 'Write'
+        ? e.file_path
+        : e.tool === 'NotebookEdit'
+          ? e.notebook_path
+          : undefined
+
+    if (isAutoOpen && hasWritten && written !== undefined) {
+      void autoOpen($, written).catch(() => undefined)
+    }
     if (WRITING_TOOLS.includes(String(e.tool))) {
       void isPaneOpen($)
         .then(isOpen => (isOpen ? refresh($) : undefined))

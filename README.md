@@ -104,6 +104,24 @@ In the desktop app, where `/plugin` does not run: click `+` next to the input
 box, then Plugins, Add marketplace with `brique-jaune/code_inspector`, then
 Add plugin.
 
+### Opening the pane automatically
+
+A `/inspect` typed while Claude is working waits for the turn to end, so the
+pane shows up late. With the `autoOpen` option on, the mod opens the pane by
+itself, during the turn, right after the first file Claude writes.
+
+- Off by default. Turn it on in `/config`, on the row "Ouvrir à la première
+  écriture".
+- A successful `Edit`, `Write` or `NotebookEdit` opens the pane, from Claude
+  or from a subagent. `Bash` does not: a command may write nothing.
+- Once per session: a pane you closed stays closed, and opening it yourself
+  with `/inspect` counts as that once.
+- Only a file inside the repository counts: a plan or a note written
+  elsewhere opens nothing, and nothing opens outside a git repository.
+- A terminal draws a pane opened this way from 144 columns, or from 110 once
+  you have opened it yourself and not closed it by hand since. Below that the
+  pane waits, and a toast says so: widen the terminal or type `/inspect`.
+
 ## Development
 
 ```
@@ -111,6 +129,16 @@ claude --plugin-dir .        # loads the mod from this folder
 claude plugin validate .     # checks the manifest and the module
 claude plugin test .         # runs tests/*.test.tsx
 ```
+
+The same two checks run on every pull request (`.github/workflows/ci.yml`).
+
+### Releases
+
+[release-please](https://github.com/googleapis/release-please) keeps a release
+pull request open on `main`: merging it bumps the version in
+`.claude-plugin/plugin.json`, writes `CHANGELOG.md` and tags the release. It
+reads [Conventional Commits](https://www.conventionalcommits.org): only a
+`feat:` or a `fix:` commit makes a release.
 
 ## Limitations
 
