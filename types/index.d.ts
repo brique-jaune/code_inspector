@@ -95,6 +95,8 @@ declare module 'claude-code' {
       view: Shaped<View>
       commentTarget: Shaped<CommentTarget>
       report: Shaped<Report>
+      /** The pane was opened once this session, by the person or unasked. */
+      hasAutoOpened: Shaped<boolean>
     }
   }
 }

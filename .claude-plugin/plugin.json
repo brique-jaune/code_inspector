@@ -3,5 +3,13 @@
   "version": "0.3.0",
   "description": "A side pane to review a branch: Claude's summary, the diffs against the base branch with read marks and a model-judged filter, and Claude's notes on its pushbacks and trade-offs, each open to comments.",
   "license": "MIT",
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "autoOpen": {
+      "type": "boolean",
+      "title": "Ouvrir à la première écriture",
+      "description": "Ouvre le panneau Inspect dès que Claude écrit un fichier, une fois par session.",
+      "default": false
+    }
+  }
 }

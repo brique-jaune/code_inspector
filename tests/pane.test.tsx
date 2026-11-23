@@ -52,6 +52,20 @@ type HostOptions = {
   log?: string[][]
   /** What `$.store` holds: the mod's values kept between sessions. */
   store?: Map<string, unknown>
+  /** The id of every pane the mod opened, in order, for a test to read. */
+  opens?: string[]
+  /** Whether a surface draws the pane the mod opens; true when unsaid. */
+  isPlaced?: boolean
+  /** Every tool call but the mod's own ends in an error. */
+  isToolError?: boolean
+  /** Every tool call but the mod's own is refused. */
+  isToolDenied?: boolean
+  /** No pane is open until the mod opens one, as a session starts. */
+  isClosed?: boolean
+  /** Opening a pane throws. */
+  failOpen?: boolean
+  /** The text of every toast the mod raised, for a test to read. */
+  toasts?: string[]
 }
 
 /**
@@ -72,6 +86,13 @@ function fakeHost(on: On, counts: { model: number }, options: HostOptions = {}) 
     isRepo = true,
     log = [],
     store = new Map<string, unknown>(),
+    opens = [],
+    isPlaced = true,
+    isToolError = false,
+    isToolDenied = false,
+    failOpen = false,
+    isClosed = false,
+    toasts = [],
   } = options
 
   on('command.register', () => ({ value: { command: 'inspect' } }))
@@ -92,9 +113,23 @@ function fakeHost(on: On, counts: { model: number }, options: HostOptions = {}) 
 
     return { value: undefined }
   })
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.open', (_, e) => {
+    if (failOpen) throw new Error('no room')
+    opens.push(e.id)
+
+    return {
+      value: isPlaced
+        ? { isPlaced: true as const }
+        : { isPlaced: false as const, reason: 'terminal too narrow' },
+    }
+  })
+  on('ui.toast', (_, e) => {
+    toasts.push(e.text)
+
+    return { value: undefined }
+  })
   on('ui.panes', () => ({
-    value: [
+    value: isClosed && opens.length === 0 ? [] : [
       {
         id: 'code-inspector',
         title: 'Inspect',
@@ -105,7 +140,11 @@ function fakeHost(on: On, counts: { model: number }, options: HostOptions = {}) 
     ],
   }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('tool.call', () => ({ result: {} }))
+  on('tool.call', () => {
+    if (isToolDenied) return { deny: 'refused' }
+
+    return isToolError ? { result: {}, isError: true } : { result: {} }
+  })
   on('process.run', (_, e) => {
     const argv = e.argv
     const answer = (exitCode: number, stdout: string) => ({
@@ -707,4 +746,186 @@ test('a stored note is kept only with an id of the tool, once, cut to size', asy
   expect(await ui.find({ type: 'Text', text: /Bonne/ })).toBeDefined()
   expect(String((await ui.find({ type: 'Markdown' }))?.props.text).length).toBe(4000)
   await ui.unmount()
+})
+
+const AUTO = { options: { autoOpen: true } }
+const EDIT = {
+  tool: 'Edit',
+  file_path: '/repo/src/a.ts',
+  old_string: 'old',
+  new_string: 'new',
+} as const
+
+test('autoOpen: the first successful Edit opens the pane and fills the list', AUTO, async ($, on) => {
+  const opens: string[] = []
+  const clock = fakeHost(on, { model: 0 }, { opens, isClosed: true })
+
+  await $.session.start(START)
+  await $.tool.call(EDIT)
+  await clock.settle()
+
+  expect(opens).toEqual(['code-inspector'])
+  const ui = await $.ui.mount(PANE)
+
+  expect(await ui.find({ type: 'Text', text: /src\/a\.ts/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('autoOpen: a second Edit does not open it again', AUTO, async ($, on) => {
+  const opens: string[] = []
+  const clock = fakeHost(on, { model: 0 }, { opens })
+
+  await $.session.start(START)
+  await $.tool.call(EDIT)
+  await clock.settle()
+  await $.tool.call(EDIT)
+  await clock.settle()
+
+  expect(opens.length).toBe(1)
+})
+
+test('autoOpen: two Edits at once open it once', AUTO, async ($, on) => {
+  const opens: string[] = []
+  const clock = fakeHost(on, { model: 0 }, { opens })
+
+  await $.session.start(START)
+  await Promise.all([$.tool.call(EDIT), $.tool.call(EDIT)])
+  await clock.settle()
+
+  expect(opens.length).toBe(1)
+})
+
+test('autoOpen: /inspect by hand counts as the opening', AUTO, async ($, on) => {
+  const opens: string[] = []
+  const clock = fakeHost(on, { model: 0 }, { opens })
+
+  await $.session.start(START)
+  await $.command.run(inspect())
+  await $.tool.call(EDIT)
+  await clock.settle()
+
+  expect(opens.length).toBe(1)
+})
+
+test('autoOpen: Bash alone opens nothing', AUTO, async ($, on) => {
+  const opens: string[] = []
+  const clock = fakeHost(on, { model: 0 }, { opens })
+
+  await $.session.start(START)
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+  await clock.settle()
+
+  expect(opens).toEqual([])
+})
+
+test('autoOpen: a failed Edit opens nothing', AUTO, async ($, on) => {
+  const opens: string[] = []
+  const clock = fakeHost(on, { model: 0 }, { opens, isToolError: true })
+
+  await $.session.start(START)
+  await $.tool.call(EDIT)
+  await clock.settle()
+
+  expect(opens).toEqual([])
+})
+
+test('autoOpen: a refused Edit opens nothing', AUTO, async ($, on) => {
+  const opens: string[] = []
+  const clock = fakeHost(on, { model: 0 }, { opens, isToolDenied: true })
+
+  await $.session.start(START)
+  await $.tool.call(EDIT)
+  await clock.settle()
+
+  expect(opens).toEqual([])
+})
+
+test('autoOpen: nothing opens outside a git repository', AUTO, async ($, on) => {
+  const opens: string[] = []
+  const clock = fakeHost(on, { model: 0 }, { opens, isRepo: false })
+
+  await $.session.start(START)
+  await $.tool.call(EDIT)
+  await clock.settle()
+
+  expect(opens).toEqual([])
+})
+
+test('autoOpen: a file written outside the repository opens nothing, the next one inside does', AUTO, async ($, on) => {
+  const opens: string[] = []
+  const clock = fakeHost(on, { model: 0 }, { opens })
+
+  await $.session.start(START)
+  await $.tool.call({ tool: 'Write', file_path: '/home/me/.claude/plans/plan.md', content: 'x' })
+  await clock.settle()
+  expect(opens).toEqual([])
+
+  // A folder whose name only starts like the repository's is outside it too.
+  await $.tool.call({ tool: 'Write', file_path: '/repo-notes/a.md', content: 'x' })
+  await clock.settle()
+  expect(opens).toEqual([])
+
+  await $.tool.call({ tool: 'Write', file_path: '/repo/src/b.ts', content: 'x' })
+  await clock.settle()
+  expect(opens).toEqual(['code-inspector'])
+})
+
+test('autoOpen: a subagent Edit opens the pane', AUTO, async ($, on) => {
+  const opens: string[] = []
+  const clock = fakeHost(on, { model: 0 }, { opens })
+
+  await $.session.start(START)
+  await $.tool.call({ ...EDIT, agentId: 'a1' })
+  await clock.settle()
+
+  expect(opens).toEqual(['code-inspector'])
+})
+
+test('autoOpen: an opening that fails leaves the tool call its result', AUTO, async ($, on) => {
+  const clock = fakeHost(on, { model: 0 }, { failOpen: true })
+
+  await $.session.start(START)
+  const ran = await $.tool.call(EDIT)
+
+  await clock.settle()
+
+  expect(ran.result).toBeDefined()
+})
+
+test('autoOpen off by default: an Edit opens nothing', async ($, on) => {
+  const opens: string[] = []
+  const clock = fakeHost(on, { model: 0 }, { opens })
+
+  await $.session.start(START)
+  await $.tool.call(EDIT)
+  await clock.settle()
+
+  expect(opens).toEqual([])
+})
+
+const NARROW =
+  'Inspect ouvert, mais le terminal est trop étroit pour l’afficher : élargis-le ou tape /inspect.'
+
+test('autoOpen: an unplaced pane says so in a toast, once', AUTO, async ($, on) => {
+  const toasts: string[] = []
+  const clock = fakeHost(on, { model: 0 }, { toasts, isPlaced: false })
+
+  await $.session.start(START)
+  await $.tool.call(EDIT)
+  await clock.settle()
+  await $.tool.call(EDIT)
+  await clock.settle()
+
+  expect(toasts).toEqual([NARROW])
+})
+
+test('autoOpen: a placed pane toasts nothing', AUTO, async ($, on) => {
+  const toasts: string[] = []
+  const clock = fakeHost(on, { model: 0 }, { toasts })
+
+  await $.session.start(START)
+  await $.tool.call(EDIT)
+  await clock.settle()
+
+  expect(toasts).toEqual([])
 })
