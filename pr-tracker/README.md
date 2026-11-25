@@ -14,7 +14,10 @@ appear on screen.
 - **Your open pull requests**, in four groups: "Approuvées", "Changements
   demandés", "En attente de review" and "Draft".
 - **"À reviewer"**: the open pull requests whose review is requested from you
-  or from one of your teams, with their author.
+  or from one of your teams, with their author. Its "Masquer équipes" button
+  hides the ones requested from a team only and keeps those where you are
+  named as a reviewer; "Afficher équipes" brings them back. The choice is
+  remembered across sessions.
 
 Each row holds:
 
@@ -39,7 +42,7 @@ The lists are read again every 30 minutes while the pane is open, and on the
 
 The mod reads GitHub through the [GitHub CLI](https://cli.github.com): `gh`
 must be installed and logged in (`gh auth login`). It runs one command,
-`gh api graphql`, with two searches; it writes nothing to GitHub, and no model
+`gh api graphql`, with three searches; it writes nothing to GitHub, and no model
 is called.
 
 ## Installation

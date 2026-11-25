@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, Timer } from 'claude-code'
+import type { EngineInterface, Register, RenderChildren, Timer } from 'claude-code'
 
 import type { Board, PullRequest } from '../types'
 
@@ -13,19 +13,26 @@ const MAX_TITLE = 300
 
 const FIELDS =
   'number title url isDraft updatedAt reviewDecision author{login} repository{nameWithOwner} commits(last:1){nodes{commit{statusCheckRollup{state}}}}'
-const QUERY = `query($mine:String!,$asked:String!){
+const QUERY = `query($mine:String!,$asked:String!,$direct:String!){
   mine:search(query:$mine,type:ISSUE,first:${MAX_LISTED}){issueCount nodes{...on PullRequest{${FIELDS}}}}
   asked:search(query:$asked,type:ISSUE,first:${MAX_LISTED}){issueCount nodes{...on PullRequest{${FIELDS}}}}
+  direct:search(query:$direct,type:ISSUE,first:${MAX_LISTED}){issueCount nodes{...on PullRequest{${FIELDS}}}}
 }`
 const MINE = 'is:pr is:open author:@me archived:false sort:updated-desc'
 const ASKED = 'is:pr is:open review-requested:@me archived:false sort:updated-desc'
+// Asked of the person by name: a request made to one of their teams is left out.
+const DIRECT = 'is:pr is:open user-review-requested:@me archived:false sort:updated-desc'
+// The store's key for the choice to hide the reviews asked of a team.
+const DIRECT_ONLY = 'isDirectOnly'
 const GH_HINT = 'Vérifie que GitHub CLI est installé et connecté (gh auth login).'
 
 const NO_BOARD: Board = {
   mine: [],
   asked: [],
+  direct: [],
   mineTotal: 0,
   askedTotal: 0,
+  directTotal: 0,
   fetchedAt: 0,
   isLoading: false,
   error: '',
@@ -34,8 +41,10 @@ const NO_BOARD: Board = {
 // Change the tag when the value's fields change: it declines what an earlier
 // version stored, which outlives a reload.
 const board = atom({ plugin: 'pr-tracker', key: 'board' } as const, NO_BOARD, {
-  shape: 'board-1',
+  shape: 'board-2',
 })
+
+const isDirectOnly = atom({ plugin: 'pr-tracker', key: 'isDirectOnly' } as const, false)
 
 function reviewOf(decision: unknown): PullRequest['review'] {
   if (decision === 'APPROVED') return 'approved'
@@ -93,11 +102,11 @@ function listOf(search: unknown): Listed {
   return { list, total: typeof issueCount === 'number' ? issueCount : list.length }
 }
 
-/** Reads what `gh api graphql` printed into the two lists. */
-function listsOf(stdout: string): { mine: Listed; asked: Listed } {
+/** Reads what `gh api graphql` printed into the three lists. */
+function listsOf(stdout: string): { mine: Listed; asked: Listed; direct: Listed } {
   const data = recordOf(recordOf(JSON.parse(stdout)).data)
 
-  return { mine: listOf(data.mine), asked: listOf(data.asked) }
+  return { mine: listOf(data.mine), asked: listOf(data.asked), direct: listOf(data.direct) }
 }
 
 /**
@@ -141,7 +150,13 @@ async function refresh($: EngineInterface): Promise<void> {
 
   try {
     const ran = await $.process.run(
-      ['gh', 'api', 'graphql', '-f', `query=${QUERY}`, '-f', `mine=${MINE}`, '-f', `asked=${ASKED}`],
+      [
+        'gh', 'api', 'graphql',
+        '-f', `query=${QUERY}`,
+        '-f', `mine=${MINE}`,
+        '-f', `asked=${ASKED}`,
+        '-f', `direct=${DIRECT}`,
+      ],
       { timeoutMs: 60_000 },
     )
 
@@ -155,8 +170,10 @@ async function refresh($: EngineInterface): Promise<void> {
     await update($, board, () => ({
       mine: lists.mine.list,
       asked: lists.asked.list,
+      direct: lists.direct.list,
       mineTotal: lists.mine.total,
       askedTotal: lists.asked.total,
+      directTotal: lists.direct.total,
       fetchedAt: now,
       isLoading: false,
       error: '',
@@ -171,6 +188,13 @@ async function refresh($: EngineInterface): Promise<void> {
       error: `gh : ${message.slice(0, 300)}. ${GH_HINT}`,
     }))
   }
+}
+
+/** Shows or hides the reviews asked of a team, and keeps the choice for later sessions. */
+async function toggleDirectOnly($: EngineInterface): Promise<void> {
+  const next = (await update($, isDirectOnly, on => on !== true)) === true
+
+  await $.store.set(DIRECT_ONLY, next)
 }
 
 async function isPaneOpen($: EngineInterface): Promise<boolean> {
@@ -189,6 +213,10 @@ export const register: Register = on => {
     })
     // A reload starts the module over: a fetch it was running is gone.
     await update($, board, b => ({ ...b, isLoading: false }))
+    // The choice an earlier session made; an unreadable store shows everything.
+    const stored = await $.store.get(DIRECT_ONLY).catch(() => undefined)
+
+    await update($, isDirectOnly, () => stored === true)
     timer?.cancel()
     timer = $.clock.every(REFRESH_MS, () => {
       // Nobody looks at a closed pane: GitHub is asked for nothing.
@@ -212,6 +240,9 @@ export const register: Register = on => {
     const { Box, Text, Button, Link } = $.ui.resolve(e)
     const state = await read($, board)
     const now = await $.clock.now()
+    const hidesTeams = (await read($, isDirectOnly)) === true
+    const asked = hidesTeams ? state.direct : state.asked
+    const askedTotal = hidesTeams ? state.directTotal : state.askedTotal
 
     const ready = state.mine.filter(pr => !pr.isDraft)
     const approved = ready.filter(pr => pr.review === 'approved')
@@ -246,15 +277,24 @@ export const register: Register = on => {
         <Text dimColor>{ageOf(now, pr.updatedAt).padStart(6)}</Text>
       </Box>
     )
-    const sectionOf = (label: string, list: PullRequest[], hasAuthor = false) => {
-      if (list.length === 0) return null
-      const width = Math.max(...list.map(pr => `#${pr.number}`.length))
+    // A section with nothing to list is left out, unless it holds an action.
+    const sectionOf = (
+      label: string,
+      list: PullRequest[],
+      hasAuthor = false,
+      action: RenderChildren = null,
+    ) => {
+      if (list.length === 0 && action === null) return null
+      const width = Math.max(0, ...list.map(pr => `#${pr.number}`.length))
 
       return (
         <Box flexDirection="column" marginTop={1}>
-          <Text bold>
-            {label} <Text dimColor>· {list.length}</Text>
-          </Text>
+          <Box flexDirection="row" justifyContent="space-between">
+            <Text bold>
+              {label} <Text dimColor>· {list.length}</Text>
+            </Text>
+            {action}
+          </Box>
           {list.map(pr => rowOf(pr, width, hasAuthor))}
         </Box>
       )
@@ -288,7 +328,7 @@ export const register: Register = on => {
             {'  '}⚠️ {changes.length}
             {'  '}👀 {waiting.length}
             {'  '}✏️ {drafts.length}
-            {'  '}📄 {state.asked.length}
+            {'  '}📄 {asked.length}
           </Text>
         )}
         {sectionOf('✅ Approuvées', approved)}
@@ -299,11 +339,26 @@ export const register: Register = on => {
           <Text dimColor>Aucune pull request ouverte à ton nom.</Text>
         )}
         {cutOf(state.mine.length, state.mineTotal, 'pull requests à toi')}
-        {sectionOf('📄 À reviewer', state.asked, true)}
-        {hasFetched && state.asked.length === 0 && (
-          <Text dimColor>Aucune review demandée.</Text>
+        {sectionOf(
+          '📄 À reviewer',
+          asked,
+          true,
+          hasFetched ? (
+            <Button key="direct-only" onPress={() => toggleDirectOnly($)}>
+              {hidesTeams ? 'Afficher équipes' : 'Masquer équipes'}
+            </Button>
+          ) : null,
         )}
-        {cutOf(state.asked.length, state.askedTotal, 'reviews demandées')}
+        {hasFetched && asked.length === 0 && (
+          <Text dimColor>
+            {hidesTeams ? 'Aucune review demandée à toi directement.' : 'Aucune review demandée.'}
+          </Text>
+        )}
+        {cutOf(
+          asked.length,
+          askedTotal,
+          hidesTeams ? 'reviews demandées à toi directement' : 'reviews demandées',
+        )}
       </Box>
     )
   })

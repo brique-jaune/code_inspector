@@ -22,9 +22,12 @@ export type Board = {
   mine: PullRequest[]
   /** The open pull requests whose review is asked of the person. */
   asked: PullRequest[]
+  /** Those of `asked` whose review is asked of the person by name, not of a team. */
+  direct: PullRequest[]
   /** How many GitHub counts, which may be more than it listed. */
   mineTotal: number
   askedTotal: number
+  directTotal: number
   /** When the lists were read, in milliseconds since the epoch; 0 for never. */
   fetchedAt: number
   isLoading: boolean
@@ -36,6 +39,8 @@ declare module 'claude-code' {
   interface PluginState {
     'pr-tracker': {
       board: Shaped<Board>
+      /** Whether the reviews asked of a team are hidden; kept in the store too. */
+      isDirectOnly: boolean
     }
   }
 }
