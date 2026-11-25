@@ -1,5 +1,8 @@
 {
   "name": "code-inspector",
   "owner": { "name": "brique-jaune" },
-  "plugins": [{ "name": "code-inspector", "source": "./" }]
+  "plugins": [
+    { "name": "code-inspector", "source": "./code-inspector" },
+    { "name": "pr-tracker", "source": "./pr-tracker" }
+  ]
 }
