@@ -1,6 +1,6 @@
 {
   "name": "pr-tracker",
-  "version": "1.0.0",
+  "version": "0.2.0",
   "description": "A side pane that lists your open GitHub pull requests with their review and CI state, and the pull requests waiting for your review.",
   "license": "MIT",
   "types": "./types/index.d.ts"
