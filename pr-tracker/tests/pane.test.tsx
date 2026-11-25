@@ -77,6 +77,10 @@ const ASKED: Node[] = [
 type HostOptions = {
   mine?: Node[]
   asked?: Node[]
+  /** The reviews asked of the person by name; all of `asked` when unsaid. */
+  direct?: Node[]
+  /** What the store holds before the mod writes to it. */
+  stored?: Record<string, unknown>
   /** How many pull requests GitHub counts as the person's; the list's length when unsaid. */
   mineTotal?: number
   /** No pane is open until the mod opens one. */
@@ -88,17 +92,25 @@ type HostOptions = {
  * clock at noon. `host.gh` is how `gh` answers next, for a test to change.
  */
 function fakeHost(on: On, options: HostOptions = {}) {
-  const { mine = MINE, asked = ASKED, mineTotal, isClosed = false } = options
+  const { mine = MINE, asked = ASKED, direct = asked, mineTotal, isClosed = false } = options
+  const store = new Map(Object.entries(options.stored ?? {}))
   const host = {
     /** Every argv the mod ran. */
     log: [] as string[][],
     opens: [] as string[],
-    gh: { exitCode: 0, stderr: '', mine, asked },
+    gh: { exitCode: 0, stderr: '', mine, asked, direct },
+    store,
     clock: mock.clock(on, { now: NOON }),
   }
 
   on('command.register', () => ({ value: { command: 'prs' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('store.get', (_, e) => ({ value: store.get(e.key) }))
+  on('store.set', (_, e) => {
+    store.set(e.key, e.value)
+
+    return { value: undefined }
+  })
   on('ui.open', (_, e) => {
     host.opens.push(e.id)
 
@@ -123,6 +135,7 @@ function fakeHost(on: On, options: HostOptions = {}) {
               nodes: host.gh.mine.map(nodeOf),
             },
             asked: { issueCount: host.gh.asked.length, nodes: host.gh.asked.map(nodeOf) },
+            direct: { issueCount: host.gh.direct.length, nodes: host.gh.direct.map(nodeOf) },
           },
         }),
         stderr: host.gh.stderr,
@@ -144,12 +157,15 @@ test('/prs opens the pane and lists the pull requests by state', async ($, on) =
 
   expect(ran.text).toBe('Panneau Suivi PR ouvert.')
   expect(host.opens).toEqual(['pr-tracker'])
-  // One command, by its argument vector: both searches in one request.
+  // One command, by its argument vector: the three searches in one request.
   expect(host.log.length).toBe(1)
   expect(host.log[0]?.slice(0, 3)).toEqual(['gh', 'api', 'graphql'])
   expect(host.log[0]).toContain('mine=is:pr is:open author:@me archived:false sort:updated-desc')
   expect(host.log[0]).toContain(
     'asked=is:pr is:open review-requested:@me archived:false sort:updated-desc',
+  )
+  expect(host.log[0]).toContain(
+    'direct=is:pr is:open user-review-requested:@me archived:false sort:updated-desc',
   )
 
   const ui = await $.ui.mount(PANE)
@@ -257,6 +273,55 @@ test('says so when there is nothing, and when GitHub holds more than it listed',
   )
   expect(await ui.find({ type: 'Text', text: /Aucune review demandée/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /63 pull requests à toi de plus/ })).toBeDefined()
+  await ui.unmount()
+})
+
+const TEAM: Node = { number: 300, title: 'feat: asked of a team', author: 'teammate' }
+const BY_NAME: Node = { number: 301, title: 'fix: asked of me', author: 'OgmaJ' }
+
+test('the button hides the reviews asked of a team, and the choice is kept', async ($, on) => {
+  const host = fakeHost(on, { asked: [TEAM, BY_NAME], direct: [BY_NAME] })
+
+  await $.session.start(START)
+  await $.command.run(prs())
+  await host.clock.settle()
+  const ui = await $.ui.mount(PANE)
+  const has = async (text: RegExp) => (await ui.find({ type: 'Text', text })) !== undefined
+
+  expect(await has(/À reviewer · 2/)).toBe(true)
+  expect(await has(/asked of a team/)).toBe(true)
+  expect((await ui.find({ type: 'Button', key: 'direct-only' }))?.text).toBe('Masquer équipes')
+
+  await ui.press({ key: 'direct-only' })
+
+  expect(await has(/À reviewer · 1/)).toBe(true)
+  expect(await has(/asked of a team/)).toBe(false)
+  expect(await has(/asked of me/)).toBe(true)
+  expect(await has(/📄 1$/)).toBe(true)
+  expect((await ui.find({ type: 'Button', key: 'direct-only' }))?.text).toBe('Afficher équipes')
+  expect(host.store.get('isDirectOnly')).toBe(true)
+  // The filter reads what was fetched: GitHub is not asked again.
+  expect(host.log.length).toBe(1)
+
+  await ui.press({ key: 'direct-only' })
+
+  expect(await has(/asked of a team/)).toBe(true)
+  expect(host.store.get('isDirectOnly')).toBe(false)
+  await ui.unmount()
+})
+
+test('a choice stored by an earlier session hides the team reviews from the start', async ($, on) => {
+  const host = fakeHost(on, { asked: [TEAM], direct: [], stored: { isDirectOnly: true } })
+
+  await $.session.start(START)
+  await $.command.run(prs())
+  await host.clock.settle()
+  const ui = await $.ui.mount(PANE)
+
+  expect(await ui.find({ type: 'Text', text: /asked of a team/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /Aucune review demandée à toi directement/ })).toBeDefined()
+  // The button stays, to show them again.
+  expect((await ui.find({ type: 'Button', key: 'direct-only' }))?.text).toBe('Afficher équipes')
   await ui.unmount()
 })
 
