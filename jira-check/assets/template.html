@@ -181,7 +181,7 @@ const st = (s, fallback) => STATES.includes(s) ? s : fallback;
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmt = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
 const safeUrl = u => /^https:\/\//.test(String(u ?? "")) ? esc(u) : "#";
-const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
+const plural = (n, one, many) => `${esc(n)} ${n > 1 ? many : one}`;
 
 function render(D) {
   const J = D.jiraBase || "";
@@ -200,7 +200,9 @@ function render(D) {
     const checks = d.checks || {};
 
     const tags = [];
-    if (d.openQuestions) tags.push(`<span class="tag oq">${plural(d.openQuestions, "question ouverte", "questions ouvertes")}</span>`);
+    // A count only: anything else in data.json is dropped, never written into the page.
+    const open = Number.isInteger(d.openQuestions) && d.openQuestions > 0 ? d.openQuestions : 0;
+    if (open) tags.push(`<span class="tag oq">${plural(open, "question ouverte", "questions ouvertes")}</span>`);
     (d.tags || []).forEach(t => tags.push(`<span class="tag">${fmt(t)}</span>`));
 
     const cxItems = (d.contradictions || []).map(id => CX[String(id)]).filter(Boolean).map(c =>
