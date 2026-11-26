@@ -1,4 +1,5 @@
 {
   "code-inspector": "0.4.0",
-  "pr-tracker": "0.0.0"
+  "pr-tracker": "0.0.0",
+  "jira-check": "0.1.0"
 }
