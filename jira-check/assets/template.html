@@ -1,0 +1,298 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap">
+<style>
+/* Layout : en-tête de synthèse, puis un arbre à géométrie fixe (ticket racine en haut, enfants
+   dessous en colonnes, petits-enfants en rail vertical sous chaque colonne, tickets liés dans
+   une colonne à droite). Tout le détail s'ouvre dans les cards.
+   Ce fichier ne contient aucune donnée : tout vient de data.json, publié à côté de la page. */
+:root {
+  --bg: #f2f4f8; --surface: #ffffff; --sunken: #e8ecf2; --ink: #18202c; --muted: #5a6677;
+  --line: #c3cbd8; --accent: #2a55c4;
+  --ok: #1c7f47; --ok-bg: #e0f3e7; --warn: #a2640a; --warn-bg: #fbeed3; --ko: #bf3434; --ko-bg: #fbe3e1;
+  --epic: #7a4fd0; --story: #2f9a57; --sub: #2f86d6;
+  --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: Inter, "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12161d; --surface: #1b212b; --sunken: #232a36; --ink: #e6eaf1; --muted: #9aa6b8;
+  --line: #3a4454; --accent: #8fb0ff;
+  --ok: #5dcb8a; --ok-bg: #173524; --warn: #e6b455; --warn-bg: #3a2d12; --ko: #f08a84; --ko-bg: #421d1c;
+  --epic: #a98bf0; --story: #5dcb8a; --sub: #6cb2f2; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12161d; --surface: #1b212b; --sunken: #232a36; --ink: #e6eaf1; --muted: #9aa6b8;
+  --line: #3a4454; --accent: #8fb0ff;
+  --ok: #5dcb8a; --ok-bg: #173524; --warn: #e6b455; --warn-bg: #3a2d12; --ko: #f08a84; --ko-bg: #421d1c;
+  --epic: #a98bf0; --story: #5dcb8a; --sub: #6cb2f2; color-scheme: dark }
+
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.5 var(--body); }
+.page { max-width: 1320px; margin: 0 auto; padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 28px; }
+h1 { font-family: var(--display); font-weight: 600; text-wrap: balance; margin: 0; font-size: 26px; line-height: 1.2; }
+a { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code { font-family: var(--mono); font-size: .92em; background: var(--sunken); padding: 1px 4px; border-radius: 3px; }
+.eyebrow { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.lede { max-width: 72ch; color: var(--muted); margin: 6px 0 0; }
+
+.head { display: flex; flex-wrap: wrap; gap: 20px 40px; align-items: flex-end; justify-content: space-between; }
+.head > div { min-width: 0; }
+.tally { display: flex; flex-wrap: wrap; gap: 10px; }
+.tally div { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; font-weight: 600; }
+.tally b { font: 600 20px var(--display); font-variant-numeric: tabular-nums; }
+.tally .ok { background: var(--ok-bg); color: var(--ok); } .tally .warn { background: var(--warn-bg); color: var(--warn); } .tally .ko { background: var(--ko-bg); color: var(--ko); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: 12.5px; align-items: center; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 26px; height: 0; border-top: 2px solid var(--line); display: inline-block; }
+.sw.dash { border-top-style: dashed; }
+.sw.pr-sw { border-top-style: dashed; border-color: var(--accent); }
+
+/* ---------- arbre ---------- */
+.scroll { overflow-x: auto; padding-bottom: 8px; }
+.tree { --w: 400px; --g: 40px; --n: 1; --ew: 400px; display: grid; grid-template-columns: repeat(var(--n), var(--w)) 300px; column-gap: var(--g); width: max-content; }
+.rootrow { display: flex; justify-content: center; }
+.epicwrap { position: relative; width: var(--ew); }
+.epicwrap[data-rel]::after { content: attr(data-rel); position: absolute; left: 100%; top: 26px;
+  width: calc((var(--n) * var(--w) + (var(--n) - 1) * var(--g) - var(--ew)) / 2 + var(--g));
+  border-top: 2px dashed var(--line); font-size: 11px; color: var(--muted); text-align: center; line-height: 1.7; }
+.branch { height: 44px; position: relative; }
+.branch::before { content: ""; position: absolute; left: calc(50% - 1px); top: 0; height: 22px; border-left: 2px solid var(--line); }
+.branch::after { content: ""; position: absolute; left: calc(var(--w) / 2 - 1px); right: calc(var(--w) / 2 - 1px); top: 22px; bottom: 0;
+  border: 2px solid var(--line); border-bottom: 0; border-radius: 8px 8px 0 0; }
+.drop { height: 0; position: relative; }
+.drop::before { content: ""; position: absolute; left: calc(50% - 1px); top: -22px; height: 22px; border-left: 2px solid var(--line); }
+.col { position: relative; min-width: 0; }
+.blocks { position: absolute; left: 100%; top: 26px; width: var(--g); border-top: 2px solid var(--muted); font-size: 10px; color: var(--muted); text-align: center; line-height: 1.6; }
+.blocks::after { content: ""; position: absolute; right: -1px; top: -6px; border: 5px solid transparent; border-left-color: var(--muted); border-right: 0; }
+.subs { margin-left: 22px; padding-left: 22px; display: flex; flex-direction: column; }
+.subs > .node { position: relative; margin-top: 14px; }
+.subs > .node::before { content: ""; position: absolute; left: -23px; top: -15px; width: 22px; height: 40px; border-left: 2px solid var(--line); border-bottom: 2px solid var(--line); border-bottom-left-radius: 8px; }
+.subs > .node:not(:last-child)::after { content: ""; position: absolute; left: -23px; top: 20px; bottom: 0; border-left: 2px solid var(--line); }
+.side { grid-row: 1 / span 3; display: flex; flex-direction: column; gap: 12px; }
+.side .mentions { margin-top: 10px; padding-left: 14px; border-left: 2px dashed var(--line); display: flex; flex-direction: column; gap: 10px; }
+.state { color: var(--muted); padding: 24px 0; }
+
+/* ---------- cards ---------- */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.card.v-ok { border-color: var(--ok); } .card.v-ko { border-color: var(--ko); } .card.v-warn { border-color: var(--warn); }
+.card header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.type { width: 14px; height: 14px; border-radius: 3px; flex: none; }
+.t-epic .type { background: var(--epic); } .t-story .type { background: var(--story); } .t-sub .type { background: var(--sub); }
+.key { font: 600 12.5px var(--mono); text-decoration: none; }
+.key:hover { text-decoration: underline; }
+.kind { font-size: 11px; color: var(--muted); }
+.status { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 10px; background: var(--sunken); color: var(--muted); }
+.status.prog { background: var(--warn-bg); color: var(--warn); } .status.done { background: var(--ok-bg); color: var(--ok); }
+.verdict { margin-left: auto; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; flex: none; border: 0; padding: 0; cursor: pointer; }
+.cbtn { margin-left: auto; position: relative; width: 26px; height: 24px; border: 0; padding: 0; background: none; cursor: pointer; display: grid; place-items: center; border-radius: 6px; flex: none; }
+.cbtn svg { width: 20px; height: 20px; fill: none; stroke: var(--muted); stroke-width: 1.6; stroke-linejoin: round; }
+.cbtn i { position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--surface); }
+.cbtn.ok i { background: var(--ok); } .cbtn.ko i { background: var(--ko); }
+.cbtn:hover, .cbtn[aria-expanded="true"] { background: var(--sunken); }
+.cbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cbtn + .verdict, .cbtn + .cbtn { margin-left: 0; }
+.verdict:hover, .verdict[aria-expanded="true"] { box-shadow: 0 0 0 3px var(--sunken), 0 0 0 4px var(--line); }
+.verdict:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.v-ok .verdict { background: var(--ok); } .v-warn .verdict { background: var(--warn); } .v-ko .verdict { background: var(--ko); }
+.verdict svg { width: 14px; height: 14px; stroke: var(--surface); fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.card h3 { margin: 0; font: 600 14px/1.35 var(--body); }
+.scope { margin: 0; font-size: 12.5px; background: var(--sunken); border-radius: 6px; padding: 6px 8px; }
+.scope b { display: block; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; }
+.checks li { display: grid; grid-template-columns: 16px 1fr; gap: 7px; align-items: start; }
+.checks svg { width: 14px; height: 14px; margin-top: 2px; fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.checks .ok svg { stroke: var(--ok); } .checks .warn svg { stroke: var(--warn); } .checks .ko svg { stroke: var(--ko); } .checks .na svg { stroke: var(--line); }
+.checks b { font-weight: 600; }
+.checks .na { color: var(--muted); }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { font-size: 11.5px; padding: 1px 8px; border-radius: 10px; border: 1px solid var(--line); color: var(--muted); }
+.tag.oq { border-color: var(--warn); color: var(--warn); }
+.pr { position: relative; margin: 2px 0 0 18px; padding: 8px 10px; border: 1px dashed var(--accent); border-radius: 6px; font-size: 12.5px; background: var(--bg); }
+.pr::before { content: ""; position: absolute; left: -12px; top: -10px; width: 11px; height: 26px; border-left: 2px solid var(--accent); border-bottom: 2px solid var(--accent); border-bottom-left-radius: 6px; }
+.pr .prk { font: 600 10.5px var(--body); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+.pr a { font-weight: 600; }
+.mini { padding: 9px 11px; gap: 4px; }
+.mini h3 { font-size: 12.5px; font-weight: 500; }
+.mini p { margin: 0; font-size: 12px; color: var(--muted); }
+
+/* ---------- détails dépliés dans les cards ---------- */
+.pill { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 1px 8px; border-radius: 10px; white-space: nowrap; }
+.pill.ok { background: var(--ok-bg); color: var(--ok); } .pill.warn { background: var(--warn-bg); color: var(--warn); } .pill.ko { background: var(--ko-bg); color: var(--ko); }
+.dx { display: flex; flex-direction: column; gap: 8px; }
+.cx { font-size: 12.5px; border-top: 1px solid var(--line); }
+.cxi { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.cxi:last-child { border-bottom: 0; padding-bottom: 0; }
+.cxh { display: flex; gap: 8px; justify-content: space-between; align-items: flex-start; }
+.cxh > span:first-child { font-weight: 600; }
+.cxi p { margin: 3px 0 0; color: var(--muted); }
+.cxi p span { font-weight: 600; color: var(--ink); }
+.cm, .cv { font-size: 12.5px; border-top: 1px solid var(--line); padding-top: 8px; }
+.cm p { margin: 0 0 4px; color: var(--muted); font-size: 12px; }
+.cv p { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+.rows { display: flex; flex-direction: column; }
+.cm .row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 3px 8px; padding: 8px 0; border-top: 1px solid var(--line); }
+.cm .row .n { font-variant-numeric: tabular-nums; color: var(--muted); }
+.cm .row .q { font-weight: 500; }
+.cm .row .a { grid-column: 2 / 4; color: var(--muted); }
+.cv .row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.cv .row .q { font-weight: 500; }
+.cv .row .a { grid-column: 1 / 3; color: var(--muted); }
+</style>
+
+<div class="page">
+  <div class="head">
+    <div>
+      <div class="eyebrow" id="eyebrow">Audit de préparation · Jira</div>
+      <h1 id="h1">Cartographie Jira</h1>
+      <p class="lede" id="lede">Chargement de l'audit.</p>
+    </div>
+    <div class="tally" id="tally"></div>
+  </div>
+
+  <div class="legend">
+    <span><i class="sw"></i> parent → enfant (dessous)</span>
+    <span><i class="sw dash"></i> ticket lié ou mentionné (à côté)</span>
+    <span><i class="sw pr-sw"></i> PR rattachée</span>
+    <span>Cliquer sur la pastille d'une card ouvre le détail des 3 critères et les contradictions qui touchent le ticket.</span>
+    <span>L'icône commentaire (point rouge : non traité, vert : tout est répondu) déroule les commentaires du ticket.</span>
+    <span>L'icône arbre, sur les tickets qui ont des enfants, déroule les trous de couverture du scope (rouge : au moins un trou, vert : tout est couvert).</span>
+    <span>La coche ne couvre que les 3 critères ; les questions ouvertes des descriptions sont signalées par une étiquette à part.</span>
+  </div>
+
+  <div class="scroll"><div class="tree" id="tree"><p class="state">Chargement des tickets.</p></div></div>
+</div>
+
+<script>
+const ICON = {
+  ok: '<svg viewBox="0 0 16 16"><path d="M3 8.5l3.2 3.2L13 4.8"/></svg>',
+  ko: '<svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
+  warn: '<svg viewBox="0 0 16 16"><path d="M8 3v6M8 12.5v.2"/></svg>',
+  na: '<svg viewBox="0 0 16 16"><path d="M4 8h8"/></svg>'
+};
+const BUBBLE = '<svg viewBox="0 0 20 20"><path d="M3 4.5h14v9H9l-3.5 3v-3H3z"/></svg>';
+const TREE = '<svg viewBox="0 0 20 20"><path d="M8 2.5h4V6H8zM2.5 14h4v3.5h-4zM13.5 14h4v3.5h-4zM10 6v4M4.5 14v-4h11v4"/></svg>';
+const VERDICT = { ok: "Conforme", warn: "Avec réserve", ko: "Non conforme" };
+const STATES = ["ok", "warn", "ko", "na"];
+const st = (s, fallback) => STATES.includes(s) ? s : fallback;
+
+// Le texte de data.json est du texte brut : seul `code` entre accents graves est mis en forme.
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmt = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
+const safeUrl = u => /^https:\/\//.test(String(u ?? "")) ? esc(u) : "#";
+const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
+
+function render(D) {
+  const J = D.jiraBase || "";
+  const T = D.tickets || {};
+  const CX = Object.fromEntries((D.contradictions || []).map(c => [String(c.id), c]));
+  const pill = (state, label) => `<span class="pill ${st(state, "warn")}">${esc(label)}</span>`;
+  const check = (label, c) => { const s = st(c && c.state, "na");
+    return `<li class="${s}">${ICON[s]}<span><b>${label}</b> · ${fmt(c && c.text)}</span></li>`; };
+
+  function card(key) {
+    const d = T[key];
+    if (!d) return `<article class="card mini" id="${esc(key)}"><header><span class="key">${esc(key)}</span></header><p>Ticket absent des données.</p></article>`;
+    const v = st(d.verdict, "warn") === "na" ? "warn" : st(d.verdict, "warn");
+    const level = ["epic", "story", "sub"].includes(d.level) ? d.level : "story";
+    const statusCat = ["prog", "done"].includes(d.statusCategory) ? d.statusCategory : "";
+    const checks = d.checks || {};
+
+    const tags = [];
+    if (d.openQuestions) tags.push(`<span class="tag oq">${plural(d.openQuestions, "question ouverte", "questions ouvertes")}</span>`);
+    (d.tags || []).forEach(t => tags.push(`<span class="tag">${fmt(t)}</span>`));
+
+    const cxItems = (d.contradictions || []).map(id => CX[String(id)]).filter(Boolean).map(c =>
+      `<div class="cxi"><div class="cxh"><span>${fmt(c.subject)}</span>${pill(c.severity, c.label)}</div><p><span>Les tickets :</span> ${fmt(c.tickets)}</p><p><span>Contredit par :</span> ${fmt(c.against)}</p></div>`).join("");
+
+    const cm = d.comments;
+    const cmState = cm && cm.state === "ok" ? "ok" : "ko";
+    const cmBtn = cm ? `<button type="button" class="cbtn ${cmState}" aria-expanded="false" aria-controls="c-${esc(key)}" title="${cmState === "ok" ? "Commentaires tous traités" : "Commentaires non traités"} : cliquer pour le détail">${BUBBLE}<i></i></button>` : "";
+    const cmBody = cm ? `<div class="cm" id="c-${esc(key)}" hidden>${cm.note ? `<p>${fmt(cm.note)}</p>` : ""}<div class="rows">${(cm.rows || []).map((r, i) =>
+      `<div class="row"><span class="n">${i + 1}</span><span class="q">${fmt(r.point)}</span>${pill(r.state, r.label)}<span class="a">${fmt(r.answer)}</span></div>`).join("")}</div></div>` : "";
+
+    const cv = d.coverage;
+    const cvState = cv && cv.state === "ok" ? "ok" : "ko";
+    const cvBtn = cv ? `<button type="button" class="cbtn ${cvState}" aria-expanded="false" aria-controls="v-${esc(key)}" title="${cvState === "ok" ? "Scope entièrement couvert par les enfants" : "Scope partiellement couvert"} : cliquer pour le détail">${TREE}<i></i></button>` : "";
+    const cvRows = cv ? (cv.rows || []).map(r =>
+      `<div class="row"><span class="q">${fmt(r.point)}</span>${pill(r.state, r.label)}<span class="a">${fmt(r.detail)}</span></div>`).join("") : "";
+    const cvBody = cv ? `<div class="cv" id="v-${esc(key)}" hidden>${cvRows ? `<div class="rows">${cvRows}</div>` : ""}<p>${fmt(cv.note || (cvRows ? "" : "Tout le scope est couvert par les enfants."))}</p></div>` : "";
+
+    const prs = (d.prs || []).map(p =>
+      `<div class="pr"><div class="prk">Pull request</div><a href="${safeUrl(p.url)}">${esc(p.repo)} #${esc(p.number)}</a><br>${fmt(p.state)}</div>`).join("");
+
+    return `<article class="card t-${level} v-${v}" id="${esc(key)}">
+      <header><i class="type"></i><a class="key" href="${safeUrl(J + key)}">${esc(key)}</a><span class="kind">${esc(d.kind)}</span>
+        <span class="status ${statusCat}">${esc(d.status)}</span>${cmBtn}${cvBtn}<button type="button" class="verdict" aria-expanded="false" aria-controls="d-${esc(key)}" title="${VERDICT[v]} : cliquer pour le détail">${ICON[v]}</button></header>
+      <h3>${esc(d.title)}</h3>
+      ${d.scope ? `<p class="scope"><b>Scope adressé</b>${fmt(d.scope)}</p>` : ""}
+      <div class="dx" id="d-${esc(key)}" hidden><ul class="checks">${check("Commentaires", checks.comments)}${check("Scope couvert", checks.coverage)}${check("Contradictions", checks.contradictions)}</ul>${cxItems ? `<div class="cx">${cxItems}</div>` : ""}</div>
+      ${tags.length ? `<div class="tags">${tags.join("")}</div>` : ""}
+      ${cmBody}${cvBody}${prs}
+    </article>`;
+  }
+
+  const kids = n => (n && n.children) || [];
+  const subs = list => list.length ? `<div class="subs">${list.map(n => `<div class="node">${card(n.key)}${subs(kids(n))}</div>`).join("")}</div>` : "";
+
+  // En-tête
+  const all = Object.values(T);
+  const count = v => all.filter(t => t.verdict === v).length;
+  document.title = `Cartographie ${D.root}`;
+  document.getElementById("eyebrow").textContent = `Audit de préparation · Jira ${D.project || ""} · relevé du ${D.auditDate || ""}`;
+  document.getElementById("h1").textContent = `${D.root} — ${D.title || ""}`;
+  document.getElementById("lede").innerHTML = `${plural(all.length, "ticket audité", "tickets audités")}${D.summary ? " : " + fmt(D.summary) : ""}. La coche verte est donnée quand les trois critères sont conformes : commentaires répondus, scope couvert par les enfants, aucune contradiction.`;
+  document.getElementById("tally").innerHTML =
+    `<div class="ok"><b>${count("ok")}</b> ${count("ok") > 1 ? "conformes" : "conforme"}</div>` +
+    `<div class="warn"><b>${count("warn")}</b> avec réserve</div>` +
+    `<div class="ko"><b>${count("ko")}</b> ${count("ko") > 1 ? "non conformes" : "non conforme"}</div>`;
+
+  // Arbre : des colonnes dès qu'un enfant de la racine a lui-même des enfants, sinon un seul rail.
+  const root = D.tree || { key: D.root };
+  const children = kids(root);
+  const isColumns = children.some(c => kids(c).length > 0);
+  const n = isColumns ? children.length : 1;
+  const linked = D.linked || [];
+  const mentions = D.mentions || [];
+  const hasSide = linked.length + mentions.length > 0;
+  const rel = linked.length ? ` data-rel="${esc(linked[0].relation || "lié")}"` : "";
+  const span = `style="grid-column: 1 / ${n + 1}"`;
+  const tree = document.getElementById("tree");
+  tree.style.setProperty("--n", n);
+  tree.style.setProperty("--ew", n > 1 ? "480px" : "400px");
+  if (!hasSide) tree.style.gridTemplateColumns = "repeat(var(--n), var(--w))";
+
+  const main = isColumns
+    ? `<div class="rootrow" ${span}><div class="epicwrap"${rel}>${card(root.key)}</div></div>
+       <div class="branch" ${span}></div>` +
+      children.map((c, i) => `<div class="col">${n > 2 && i > 0 && i < n - 1 ? '<div class="drop"></div>' : ""}${card(c.key)}${c.blocksNext && i < n - 1 ? '<span class="blocks">bloque</span>' : ""}${subs(kids(c))}</div>`).join("")
+    : `<div class="col"><div class="epicwrap"${rel}>${card(root.key)}</div>${subs(children)}</div>`;
+
+  const side = hasSide ? `<aside class="side" style="grid-column: ${n + 1}">
+      ${linked.map(l => card(l.key)).join("")}
+      ${mentions.length ? `<div class="mentions">
+        <div class="eyebrow">Mentionnés sans lien Jira · statut seul, non audités</div>
+        ${mentions.map(m => `<article class="card mini"><header><a class="key" href="${safeUrl(J + m.key)}">${esc(m.key)}</a><span class="status ${["prog", "done"].includes(m.statusCategory) ? m.statusCategory : ""}">${esc(m.status)}</span></header><h3>${esc(m.title)}</h3><p>${fmt(m.note)}</p></article>`).join("")}
+      </div>` : ""}
+    </aside>` : "";
+
+  tree.innerHTML = main + side;
+}
+
+document.getElementById("tree").addEventListener("click", e => {
+  const b = e.target.closest(".verdict, .cbtn");
+  if (!b) return;
+  const open = b.getAttribute("aria-expanded") !== "true";
+  b.setAttribute("aria-expanded", open);
+  document.getElementById(b.getAttribute("aria-controls")).hidden = !open;
+});
+
+fetch("data.json")
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+  .then(render)
+  .catch(() => {
+    document.getElementById("lede").textContent = "Les données de l'audit n'ont pas pu être lues.";
+    document.getElementById("tree").innerHTML = '<p class="state">Le fichier data.json publié avec cette page est absent ou illisible. Relancer /jira-check sur le ticket.</p>';
+  });
+</script>

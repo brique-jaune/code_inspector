@@ -23,6 +23,17 @@
           "jsonpath": "$.version"
         }
       ]
+    },
+    "jira-check": {
+      "release-type": "simple",
+      "package-name": "jira-check",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": ".claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        }
+      ]
     }
   }
 }

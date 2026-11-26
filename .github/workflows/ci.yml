@@ -26,8 +26,10 @@ jobs:
         run: |
           claude plugin validate ./code-inspector
           claude plugin validate ./pr-tracker
+          claude plugin validate ./jira-check
 
       - name: Run the tests
         run: |
           claude plugin test ./code-inspector
           claude plugin test ./pr-tracker
+          claude plugin test ./jira-check
