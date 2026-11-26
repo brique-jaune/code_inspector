@@ -1,6 +1,6 @@
 {
   "name": "jira-check",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A command that audits a Jira ticket and its dependencies, and publishes the result as a tree: answered comments, scope covered by the children, contradictions and pull requests, on each ticket's card.",
   "license": "MIT"
 }
