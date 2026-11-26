@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/brique-jaune/code_inspector/compare/code-inspector-v0.4.0...code-inspector-v0.5.0) (2026-11-26)
+
+
+### Features
+
+* add pr-tracker, a pane listing your pull requests and the reviews asked of you ([f8cf4d7](https://github.com/brique-jaune/code_inspector/commit/f8cf4d7cfecf675537fdf595e535df66bfdd93dc))
+
 ## [0.4.0](https://github.com/brique-jaune/code_inspector/compare/code-inspector-v0.3.0...code-inspector-v0.4.0) (2026-11-23)
 
 

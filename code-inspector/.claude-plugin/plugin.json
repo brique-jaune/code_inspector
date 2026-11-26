@@ -1,6 +1,6 @@
 {
   "name": "code-inspector",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "A side pane to review a branch: Claude's summary, the diffs against the base branch with read marks and a model-judged filter, and Claude's notes on its pushbacks and trade-offs, each open to comments.",
   "license": "MIT",
   "types": "./types/index.d.ts",
